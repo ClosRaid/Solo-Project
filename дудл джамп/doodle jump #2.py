@@ -1,6 +1,7 @@
 import pygame
 import os
 from random import randrange
+import pydroid
 
 
 
@@ -14,15 +15,15 @@ clock = pygame.time.Clock()
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 #Активные персонажи
-resource_path = r'C:\Users\kenue\OneDrive\Рабочий стол\дудл джамп'
-player_image_path = os.path.join(resource_path, 'player.png')
+resource_path = "/storage/emulated/0/Download/doodle_jump"
+player_image_path = os.path.join(resource_path, "player.png")
+ghost_image_path = os.path.join(resource_path, "ghost.png")
 player_img = pygame.image.load(player_image_path).convert_alpha()
-ghost_image_path = os.path.join(resource_path,'ghost.png')
 ghost_img = pygame.image.load(ghost_image_path).convert_alpha()
 ghosts = pygame.sprite.Group()
 ghost_spawn_chance = 15
 #задний фон
-background = r'C:\Users\kenue\OneDrive\Рабочий стол\дудл джамп\background.jpg'
+background = os.path.join(resource_path, "background.jpg")
 background = pygame.image.load(background).convert()
 background = pygame.transform.scale(background, (WIDTH, HEIGHT))
 bg_y = 0
@@ -36,7 +37,7 @@ JUMP_POWER = -20  # импульс вверх
 SPEED_X = 15
 PLATFORM_HEIGHT = 20
 PLATFORM_WIDTH = 100
-MAX_PLATFORMS = 1000 #Максимальное кол-во платформ существующих
+MAX_PLATFORMS = 10000 #Максимальное кол-во платформ существующих
 platform_counter = 0
 non_active_chance = 10
 
@@ -82,39 +83,84 @@ class Player(pygame.sprite.Sprite):
         for platform1 in platforms:
             platform1.rect.y += scroll
 
+        for platform1 in platforms:
+            if platform1.rect.top > HEIGHT:
+                platform1.kill()
+
         for ghost in ghosts:
             ghost.rect.y += scroll
 
 
 class Platform(pygame.sprite.Sprite):
-    def __init__(self, x, y, is_active=True):
+    def __init__(self, x, y, platform_type="normal"):
         super().__init__()
+
+        self.platform_type = platform_type
+        self.used = False
+        self.break_timer = 15
+        self.is_active = True
         self.image = pygame.Surface((PLATFORM_WIDTH, PLATFORM_HEIGHT))
-        self.is_active = is_active #новая платформа изначально не физическая
-        self.update_color()
         self.rect = self.image.get_rect(topleft=(x, y))
 
+        self.update_color()
+
     def update_color(self):
-        color = (0,255,0) if self.is_active else (255,0,0)
+        if self.platform_type == "normal":
+            color = (0, 255, 0)
+
+        elif self.platform_type == "break":
+            color = (255, 165, 0)
+
+        elif self.platform_type == "one_jump":
+            color = (255, 0, 0)
+
         self.image.fill(color)
-        pygame.draw.rect(self.image, (0,0,0), self.image.get_rect(),2) #обводка
+        pygame.draw.rect(self.image, (0, 0, 0), self.image.get_rect(), 2)
+
+    def update(self):
+        if self.platform_type == "break" and self.used:
+            self.break_timer -= 1
+
+            self.rect.y += 8
+
+            if self.break_timer <= 0:
+                self.kill()
 
 def generate_new_platforms():
     global last_platform_y, platform_counter
+
     plat_x = randrange(5, WIDTH - PLATFORM_WIDTH)
     plat_y = last_platform_y - randrange(50, 150)
-    is_active = True
-    if randrange(100) < non_active_chance:
-        is_active = False
-    new_plat = Platform(plat_x, plat_y,is_active)
+
+    chance = randrange(100)
+
+    if chance < 15:
+        platform_type = "break"
+
+    elif chance < 30:
+        platform_type = "one_jump"
+
+    else:
+        platform_type = "normal"
+
+    new_plat = Platform(plat_x, plat_y, platform_type)
+
     platforms.add(new_plat)
+    all_sprites.add(new_plat)
+
     platform_counter += 1
 
-    if platform_counter % 10 == 0:
-        if randrange(100) < ghost_spawn_chance:
-            ghost = Ghost(plat_x + PLATFORM_WIDTH // 2, plat_y - 40)
-            ghosts.add(ghost)
-            all_sprites.add(ghost)
+    # Случайное появление призраков
+    if randrange(100) < 8: #шанс появления призрака
+
+        ghost_x = randrange(100, WIDTH - 100)
+        ghost_y = plat_y - randrange(50, 150)
+
+        ghost = Ghost(ghost_x, ghost_y)
+
+        ghosts.add(ghost)
+        all_sprites.add(ghost)
+
     last_platform_y = plat_y
 
 def reset_game():
@@ -135,10 +181,22 @@ def reset_game():
 class Ghost(pygame.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__()
+
         self.image = ghost_img.copy()
         self.rect = self.image.get_rect(center=(x, y))
+
+        self.speed_x = randrange(-3, 4)
+
+        if self.speed_x == 0:
+            self.speed_x = 2
+
     def update(self):
-        pass
+
+        self.rect.x += self.speed_x
+
+        # Отскок от стен
+        if self.rect.left <= 0 or self.rect.right >= WIDTH:
+            self.speed_x *= -1
 
 
 # Инициализация игры
@@ -166,22 +224,36 @@ while running:
         bg_y = 0
     screen.blit(background, (0, bg_y))
     screen.blit(background, (0, bg_y - HEIGHT))
-    # Проверка проигрыша и перезапуск игры
+    # перезапуск игры после проигрыша
     if player.rect.top > HEIGHT:
         reset_game()
 
     # Физическое взаимодействие с платформами
     hit_list = pygame.sprite.spritecollide(player, platforms, False)
-    for platform in hit_list:
-        if not platform.is_active:
-            continue
-        if player.vel_y > 0 and player.rect.bottom <= platform.rect.top + player.vel_y:
-            player.rect.bottom = platform.rect.top
-            player.vel_y = JUMP_POWER  # импульс вверх
 
-    for sprite in all_sprites:
-        if sprite != player:
-            screen.blit(sprite.image, sprite.rect)
+    for platform in hit_list:
+
+        if (
+                player.vel_y > 0
+                and player.prev_rect.bottom <= platform.rect.top
+        ):
+
+            # Одноразовая платформа уже использована
+            if platform.platform_type == "one_jump" and platform.used:
+                continue
+
+            player.rect.bottom = platform.rect.top
+            player.vel_y = JUMP_POWER
+
+            # Разваливающаяся платформа
+            if platform.platform_type == "break":
+                platform.used = True
+
+            # Одноразовая платформа
+            elif platform.platform_type == "one_jump":
+                platform.used = True
+                platform.image.set_alpha(120)
+                platform.is_active = False
     #рисуем игрока
     screen.blit(player.image, player.rect)
     if player.rect.right > WIDTH:
@@ -193,7 +265,7 @@ while running:
         wrap_rect.x += WIDTH
         screen.blit(player.image,wrap_rect)
     platforms.draw(screen)
-
+    ghosts.draw(screen)
     font = pygame.font.SysFont(None, 36)
     text_score = font.render(f'Высота: {int(score)}', True, WHITE)
     screen.blit(text_score, (10, 10))
