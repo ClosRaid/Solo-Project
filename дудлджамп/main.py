@@ -1,7 +1,6 @@
 import pygame
 import os
 from random import randrange
-import pydroid
 
 
 
@@ -60,6 +59,15 @@ class Player(pygame.sprite.Sprite):
             self.rect.x -= SPEED_X
         if keys[pygame.K_d]:
             self.rect.x += SPEED_X
+
+        touches = pygame.mouse.get_pressed()
+        touch_x, touch_y = pygame.mouse.get_pos()
+
+        if touches[0]:
+            if touch_x < WIDTH // 2:
+                self.rect.x -= SPEED_X
+            else:
+                self.rect.x += SPEED_X
 
         # Гравитация
         self.vel_y += GRAVITY * self.mass
