@@ -1,10 +1,22 @@
 import pygame
 import os
 from random import randrange
-
+from pathlib import Path
 
 
 pygame.init()
+#Загрузка рекорда
+if os.path.exists("record.txt"):
+    with open("record.txt","r+") as file:
+        content = file.read().strip()
+
+        digit = ''.join(c for c in content if c.isdigit())
+        if digit:
+            best_score = int(digit)
+        else:
+            best_score = 0
+else:
+    best_score = 0
 #Базовые настройки
 WIDTH, HEIGHT = 1280, 720
 FPS = 60
@@ -14,13 +26,12 @@ clock = pygame.time.Clock()
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 #Активные персонажи
-resource_path = "/storage/emulated/0/Download/doodle_jump"
+resource_path = Path(__file__).parent
 player_image_path = os.path.join(resource_path, "player.png")
 ghost_image_path = os.path.join(resource_path, "ghost.png")
 player_img = pygame.image.load(player_image_path).convert_alpha()
 ghost_img = pygame.image.load(ghost_image_path).convert_alpha()
 ghosts = pygame.sprite.Group()
-ghost_spawn_chance = 15
 #задний фон
 background = os.path.join(resource_path, "background.jpg")
 background = pygame.image.load(background).convert()
@@ -36,9 +47,8 @@ JUMP_POWER = -20  # импульс вверх
 SPEED_X = 15
 PLATFORM_HEIGHT = 20
 PLATFORM_WIDTH = 100
-MAX_PLATFORMS = 10000 #Максимальное кол-во платформ существующих
+MAX_PLATFORMS = 500 #Максимальное кол-во платформ существующих
 platform_counter = 0
-non_active_chance = 10
 
 class Player(pygame.sprite.Sprite):
     def __init__(self):
@@ -55,19 +65,31 @@ class Player(pygame.sprite.Sprite):
         self.prev_rect = self.rect.copy()
         keys = pygame.key.get_pressed()
 
-        if keys[pygame.K_a]:
-            self.rect.x -= SPEED_X
-        if keys[pygame.K_d]:
-            self.rect.x += SPEED_X
+        move_left = False
+        move_right = False
 
-        touches = pygame.mouse.get_pressed()
-        touch_x, touch_y = pygame.mouse.get_pos()
+        # ПК управление
+        if keys[pygame.K_a] or keys[pygame.K_LEFT]:
+            move_left = True
 
-        if touches[0]:
+        if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
+            move_right = True
+
+        # Управление на телефон
+        if pygame.mouse.get_pressed()[0]:
+            touch_x = pygame.mouse.get_pos()[0]
+
             if touch_x < WIDTH // 2:
-                self.rect.x -= SPEED_X
+                move_left = True
             else:
-                self.rect.x += SPEED_X
+                move_right = True
+
+        # Движение
+        if move_left:
+            self.rect.x -= SPEED_X
+
+        if move_right:
+            self.rect.x += SPEED_X
 
         # Гравитация
         self.vel_y += GRAVITY * self.mass
@@ -138,7 +160,7 @@ def generate_new_platforms():
     global last_platform_y, platform_counter
 
     plat_x = randrange(5, WIDTH - PLATFORM_WIDTH)
-    plat_y = last_platform_y - randrange(50, 150)
+    plat_y = last_platform_y - randrange(40, 100)
 
     chance = randrange(100)
 
@@ -157,9 +179,11 @@ def generate_new_platforms():
     all_sprites.add(new_plat)
 
     platform_counter += 1
+    if Platform == "normal" and last_platform_y < HEIGHT:
+        platform.kill()
 
     # Случайное появление призраков
-    if randrange(100) < 8: #шанс появления призрака
+    if randrange(100) < 3: #шанс появления призрака
 
         ghost_x = randrange(100, WIDTH - 100)
         ghost_y = plat_y - randrange(50, 150)
@@ -172,7 +196,7 @@ def generate_new_platforms():
     last_platform_y = plat_y
 
 def reset_game():
-    global player, platforms, last_platform_y, score, platform_counter
+    global player, platforms, last_platform_y, score, platform_counter, best_score
 
     player = Player()
     all_sprites.empty()
@@ -184,7 +208,11 @@ def reset_game():
     platform_counter = 0
     for _ in range(MAX_PLATFORMS):
         generate_new_platforms()
+    if score > best_score:
+        best_score = score
 
+        with open("record.txt", "w") as file:
+            file.write(str(int(best_score)))
     score = 0
 class Ghost(pygame.sprite.Sprite):
     def __init__(self, x, y):
@@ -247,11 +275,14 @@ while running:
         ):
 
             # Одноразовая платформа уже использована
-            if platform.platform_type == "one_jump" and platform.used:
+            if platform.platform_type == "one_jump":
                 continue
-
-            player.rect.bottom = platform.rect.top
-            player.vel_y = JUMP_POWER
+            if (
+                player.vel_y > 0
+                and player.prev_rect.bottom <= platform.rect.top
+            ):
+                player.rect.bottom = platform.rect.top
+                player.vel_y = JUMP_POWER
 
             # Разваливающаяся платформа
             if platform.platform_type == "break":
@@ -277,7 +308,8 @@ while running:
     font = pygame.font.SysFont(None, 36)
     text_score = font.render(f'Высота: {int(score)}', True, WHITE)
     screen.blit(text_score, (10, 10))
-
+    text_record = font.render(f"Рекорд: {best_score}", True, WHITE)
+    screen.blit(text_record, (10, 50))
 
     pygame.display.flip()
 
